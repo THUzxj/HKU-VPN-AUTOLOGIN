@@ -1,0 +1,23 @@
+.local/
+# Only the public configuration template belongs in Git.
+*.json
+!/examples/config.example.json
+*.kdbx
+*.keyx
+*.key
+*.pem
+*.pfx
+*.p12
+.env
+.env.*
+id_rsa*
+id_ed25519*
+*.exe
+*.dll
+*.zip
+*.log
+*.bak
+*.tmp
+credentials.json
+totp.json
+config.local.json

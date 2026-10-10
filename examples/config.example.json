@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "runtimePath": ".local/runtime",
+  "keepass": {
+    "cli": "C:/Program Files/KeePassXC/keepassxc-cli.exe",
+    "database": "C:/path/to/your-vault.kdbx",
+    "entry": "HKU MFA",
+    "credentialsEntry": "HKU MFA",
+    "keyFile": "",
+    "enabled": true
+  },
+  "vpn": {
+    "gateways": ["https://vpn2fa-b.hku.hk", "https://vpn2fa-a.hku.hk"],
+    "proxy": "http://127.0.0.1:7890",
+    "adapterName": "HKU-OpenConnect",
+    "mtu": 1200,
+    "tls12": true,
+    "userAgent": "AnyConnect Windows 5.1.12.146"
+  },
+  "routes": ["192.0.2.10/32"]
+}
