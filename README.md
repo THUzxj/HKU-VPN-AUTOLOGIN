@@ -1,6 +1,8 @@
 # HKU VPN Auto Login（Windows）
 
-使用 OpenConnect 连接 HKU VPN，从 KeePassXC 加密数据库读取用户名、密码和 TOTP，并在微软 MFA 提示出现时自动提交验证码。通过指定 IPv4 地址或网段实现分流，普通 Internet 与系统 DNS 保持现有出口。
+使用 OpenConnect 连接 HKU VPN，从 KeePassXC 加密数据库读取用户名、密码和 TOTP，并在微软 MFA 提示出现时自动提交验证码。通过指定 IPv4 地址、网段或完整域名解析出的 IP 实现分流，普通 Internet 与系统 DNS 保持现有出口。
+
+日常操作、双击断开、路由清理范围与故障处理见 [操作说明](docs/OPERATIONS.md)。
 
 每次运行仍需确认 Windows 管理员提权，并输入一次 KeePassXC 数据库主密码。主密码、VPN 密码、TOTP 密钥和验证码不会写入项目配置，也不会放入进程命令行。用户名会作为 OpenConnect 的 `--user` 参数传入。
 
@@ -23,7 +25,7 @@
 3. 输入 `.kdbx` 路径、条目路径、代理地址和要进入 VPN 的目标 IPv4/CIDR。setup 会在本机提示输入数据库主密码，验证条目可读，再生成 `.local/config.json` 和路由脚本。setup 不尝试登录 VPN，也不添加系统路由。
 4. 先启动 Clash（如果使用代理），断开已有的 Cisco VPN，再双击 `Connect.cmd`。
 5. 确认管理员提权，在启动窗口输入数据库主密码。TLS 检查成功后，用户名、VPN 密码和 MFA 会自动输入。
-6. 保持连接窗口打开。断开时先按 `Ctrl+C` 退出 OpenConnect，再关闭代理。
+6. 保持连接窗口打开。断开时按 `Ctrl+C`，或双击 `Disconnect.cmd`，完成后再关闭代理。
 
 如果第一步下载需要代理，可在 PowerShell 中运行：
 
@@ -76,9 +78,11 @@ setup 生成的配置位于 `.local/config.json`，仓库模板在 `examples/con
 | `vpn.tls12` | 默认 `true`，限制 TLS 1.2，适用于固定的 v9.12 GnuTLS 构建 |
 | `vpn.userAgent` | 默认使用兼容 HKU XML 表单的 AnyConnect Windows 标识 |
 | `runtimePath` | OpenConnect 和 DLL 目录，默认项目内 `.local/runtime` |
-| `routes` | 必填、非空的 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16` |
+| `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；与 `domains` 至少填写一项 |
+| `domains` | 精确域名列表，经 VPN DNS 解析后添加 IPv4 路由，可省略 |
+| `dnsServers` | 用于域名查询的校园 IPv4 DNS；空列表使用 VPN 下发值 |
 
-模板中的 `192.0.2.10/32` 是文档示例地址，不能当成实际校园服务器使用。请填写自己要访问的服务器真实 IPv4 地址；不要复制其他人的私人配置。IP 不写掩码时等同 `/32`，网段地址会规范化并去重。拒绝 `/0`、空列表和明显无效的地址，避免无意接管整个 Internet。
+模板中的 `192.0.2.10/32` 是文档示例地址，不能当成实际校园服务器使用。请填写自己要访问的服务器真实 IPv4 地址或完整域名；不要复制其他人的私人配置。IP 不写掩码时等同 `/32`，网段地址会规范化并去重。拒绝 `/0`、无任何目标的配置和明显无效的地址，避免无意接管整个 Internet。
 
 需要批量配置时，复制模板到自己的文件后运行：
 
@@ -90,11 +94,47 @@ setup 可重复运行，不覆盖数据库，也不会把旧的明文 `credentia
 
 ## Clash 与分流
 
-连接链路是：应用 → OpenConnect 隧道 → Clash 香港节点 → HKU VPN 网关 → 校园目标。Clash 提供 VPN 的底层传输，OpenConnect 只为 `routes` 中指定的目标安装 VPN 路由。
+使用 Clash 代理时，目标连接链路是：应用 → OpenConnect 隧道 → Clash 香港节点 → HKU VPN 网关 → 校园目标。Clash 提供 VPN 的底层传输，OpenConnect 为 `routes` 中指定的目标及 `domains` 解析出的 IP 安装 VPN 路由；域名查询需要的校园 DNS 也会有专用路由。
 
 可选示例 `examples/clash-script.js` 会为默认的三个 HKU 网关添加 `HK APP` 香港节点组和域名规则。将它加入 Clash Verge 的脚本配置并在组内选定可用香港节点。自定义网关时同步调整对应的规则。
 
-此项目**没有实现按 `.hk` 后缀进入 VPN**。普通网站和未列出的校园 IP 继续走已有系统/Clash 规则；不会安装 VPN 默认路由或替换系统 DNS。
+此项目支持指定完整域名解析成 IPv4 路由，但**没有实现按 `.hk` 后缀匹配所有网站**。普通网站和未列出的校园 IP 继续走已有系统/Clash 规则；不会安装 VPN 默认路由或替换系统 DNS。
+
+## 域名动态路由
+
+可以同时配置固定 IP 路由和完整域名，例如在 `.local/config.json` 添加：
+
+```json
+"routes": [],
+"domains": ["server.example.hk"],
+"dnsServers": []
+```
+
+`domains` 是精确域名列表，不接受 URL、通配符或 `.hk` 后缀规则。`dnsServers` 留空时使用 VPN 下发的 IPv4 DNS；也可指定校园 DNS 的 IPv4 地址。至少需要一个固定路由或域名。旧配置不添加新字段仍可使用。
+
+基础隧道就绪后，后台脚本为校园 DNS 添加 VPN `/32` 路由，再显式向它查询每个域名的 A 记录，把全部返回 IP 加入 VPN。本次生成的路由只保存到 ActiveStore，正常断开时清理；全局 DNS 不改变。DNS 的临时路由保留到断开，供后续刷新使用。
+
+查看 `.local/domain-status.txt` 判断解析是否成功；`.local/domain-session.json` 记录本次接口、解析结果和脚本创建的路由，不记录认证数据。VPN 连上并不代表所有域名均解析成功，HKU DNS 的可达性仍需本机实测。
+
+连接期间新增域名，在**管理员 PowerShell**中运行：
+
+```powershell
+.\Add-Domain.ps1 -Name server.example.hk
+# 同时新增多个
+.\Add-Domain.ps1 -Name server.example.hk,another.example.hk
+# 只保存配置，等下次连接再应用
+.\Add-Domain.ps1 -Name server.example.hk -NoRefresh
+```
+
+重新解析所有配置域名：` .\DomainRoutes.ps1 `。脚本在所有解析成功后清理已失效的旧路由；查询失败时保留原有路由并报告失败。当前没有自动 TTL 定时刷新，IP 变化后应手动刷新或重连。不支持 AAAA/IPv6 路由。
+
+正常断开会移除本次脚本创建的 DNS/目标路由。也可双击 `Disconnect.cmd`，接受 Windows 管理员权限提示：它只结束程序路径、路由脚本路径、网卡参数都匹配当前项目的 OpenConnect 进程，再清理本次会话的 DNS/域名路由及固定 VPN 路由。Clash、Cisco、其他项目的 VPN 和登录窗口不会被结束。此脚本强制停止本地隧道；需要正常向网关注销时优先使用连接窗口的 `Ctrl+C`。
+
+重复双击断开脚本可用于重试清理。脚本验证接口名、地址、索引，并核对路由前缀、下一跳和 metric；未找到可验证的会话记录时，不会猜测并删除网卡路由。强制结束进程后也可在管理员窗口运行 ` .\DomainRoutes.ps1 -Cleanup `，仅清理记录的 DNS/域名路由。清理不能恢复被其他工具独立修改的网络状态。
+
+**应用的 DNS 也必须配合**：仅让本脚本查询校园 DNS，不会改变浏览器/SSH 的解析结果。Clash 用户需让目标域名避开 Fake-IP、使用同一校园 DNS，并用精确域名 `DIRECT` 规则将目标交给系统路由；校园 DNS 本身也应避开代理转发。浏览器自带 DoH 同样可能返回不同地址。需要按自己的 Clash DNS 设置调整，脚本不自动写入 Clash、hosts 或全局 DNS。若不配置域名解析，可直接使用脚本解析出的真实 IP。
+
+共享 IP 上的其他网站也可能经过 VPN。这是 IP 路由的行为，不是严格的按域名隔离。VPN 网关自身不能加入域名目标列表，以免形成连接循环。
 
 Clash TUN 的 Fake-IP 可能把校园域名解析为 `198.18.x.x`，它与真实 IP 的 VPN 路由不同。SSH 可以使用真实 IP（必要时设置 `HostKeyAlias` 维持原来的主机密钥身份），并在 Clash 中为这个 IP 添加优先 `DIRECT` 规则，使 Windows 的 VPN 路由生效：
 
@@ -106,44 +146,11 @@ rules:
 
 `DIRECT` 表示 Clash 不另用代理转发；实际出口由 Windows 路由决定。用真实目标地址替换例子。本脚本不会自动修改 SSH 或 Clash 配置，也不能保证校园网关允许访问所有公共网站。
 
-## 故障排查
+## 更多文档
 
-- **数据库/条目读不到**：确认完整路径、主密码、密钥文件；确认数据库已保存，条目名称与分组路径一致。详细 CLI 错误不直接打印，避免意外暴露条目内容。
-- **用户名/密码为空**：填标准字段，不要只在备注或自定义属性中保存。当前 Windows CLI 密码输入支持可打印 ASCII；其他字符会在发送前报错。
-- **自动 MFA 失败**：确认微软注册已经完成，电脑时间准确，条目生成六位验证码。脚本只自动提交一次；获取失败或再次询问时可手动输入，输入不回显。
-- **TLS 提前失败**：先确认代理监听端口、节点和网关可用。默认 TLS 1.2 是 v9.12 的兼容设置，不是关闭证书校验；不会忽略服务器证书错误。
-- **网卡已有/另一个 OpenConnect 在运行**：先退出之前的连接。程序不会擅自删除网卡或强制关闭其他 VPN。
-- **SSH 连接到 `198.18.x.x`**：检查 Fake-IP 和 Clash 规则，确认命中真实 IP 的路由。
-- **默认 Internet 是否被接管**：连接后用 `Get-NetRoute` / `Find-NetRoute -RemoteIPAddress <目标IP>` 检查。关闭窗口或强制杀进程可能留下路由，优先用 `Ctrl+C` 清理。
-- **下载校验失败**：不执行或提取该文件。核对来源，重新下载；不要删除脚本里的签名/hash 校验来绕过问题。
-
-默认关闭 DTLS 和 VPN IPv6，使用 TLS 经 HTTP 代理。这是已采用的兼容路径，不保证最佳吞吐量或跨境质量；TLS 1.2 兼容问题参考 [OpenConnect 更新记录](https://www.infradead.org/openconnect/changelog.html)。
-
-## 测试与分享
-
-测试不会连接 VPN，不读取真实账户。需要已安装 KeePassXC；模拟数据库、下载包和配置全部放在 `.local/`。
-
-```powershell
-.\tests\Test-Config.ps1
-.\tests\Test-KeePass.ps1
-.\tests\Test-MFA.ps1
-```
-
-`Test-KeePass` 使用公开 RFC 测试密钥创建临时数据库，验证用户名、密码、TOTP 和错误主密码拒绝；`Test-MFA` 模拟分段提示和验证码提交。
-
-完整离线 setup 测试会用模拟配置覆盖 `.local/config.json`，只应在测试副本中执行，不要在已配置的日常项目上运行：
-
-```powershell
-.\tests\Test-Setup.ps1 -RuntimeArchive C:\path\to\openconnect-gui-1.6.2-win64.exe
-```
-
-`Setup.ps1` 的 `-RuntimeArchive` 可复用相同的官方安装包，仍校验签名和 hash；`-SkipInstall` 禁止 winget 安装；`-SkipCredentialCheck` 仅用于暂存参数/开发测试，会明确提示尚未验证凭据。日常使用不应跳过凭据检查。
-
-发布/发给别人时运行 `Export-Source.ps1` 生成源码 ZIP。它按白名单只打包脚本、文档、模板、测试和上游路由源码，不包含 `.local/`、运行库、数据库或本机配置。不要直接压缩配置过的整个项目目录。项目未自动创建远程仓库或上传任何文件。
-
-Git 默认忽略所有本机 JSON 配置，仅允许公开模板 `examples/config.example.json`，同时忽略数据库、密钥、环境文件、下载包、运行库和日志。不要使用 `git add -f` 强制提交这些文件。
-
-当前验证覆盖本机 Windows 上的模拟登录、KeePassXC CLI、路由生成与离线 setup。首次下载/winget 安装需要接收者本机验证；新项目的真实 HKU VPN 登录也需要实测。
+- [故障排查](docs/TROUBLESHOOTING.md)
+- [测试说明](docs/TESTING.md)
+- [连接、域名路由与断开操作](docs/OPERATIONS.md)
 
 ## 许可证
 

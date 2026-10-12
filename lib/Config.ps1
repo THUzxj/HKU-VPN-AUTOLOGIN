@@ -26,7 +26,7 @@ function ConvertTo-HKURoute {
 function Test-HKUConfig {
     param($Config, [string]$ProjectRoot)
     $allowed = @{
-        root = @('schemaVersion','runtimePath','keepass','vpn','routes')
+        root = @('schemaVersion','runtimePath','keepass','vpn','routes','domains','dnsServers')
         keepass = @('cli','database','entry','credentialsEntry','keyFile','enabled')
         vpn = @('gateways','proxy','adapterName','mtu','tls12','userAgent')
     }
@@ -52,9 +52,23 @@ function Test-HKUConfig {
     if ($Config.vpn.adapterName -notmatch '^[A-Za-z0-9_-]{1,64}$' -or $Config.vpn.adapterName -match '^(Mihomo|Clash|WLAN|Ethernet)$') { throw 'Use a dedicated VPN adapter name containing letters, digits, hyphens or underscores.' }
     if ($Config.vpn.mtu -lt 576 -or $Config.vpn.mtu -gt 1500) { throw 'MTU must be between 576 and 1500.' }
     if (-not $Config.vpn.userAgent -or $Config.vpn.userAgent -match '[\r\n]') { throw 'A single-line VPN User-Agent is required.' }
-    if (-not $Config.routes -or @($Config.routes).Count -lt 1) { throw 'At least one explicit IPv4 route is required; empty routes are not allowed.' }
+    if (-not $Config.routes -and -not $Config.domains) { throw 'At least one IPv4 route or exact domain is required.' }
     foreach ($route in $Config.routes) { [void](ConvertTo-HKURoute $route) }
+    foreach ($name in $Config.domains) {
+        $normalized = ConvertTo-HKUDomain $name
+        if ($normalized -in @($Config.vpn.gateways | ForEach-Object { ([Uri]$_).Host })) { throw 'VPN gateway domains cannot be domain route targets.' }
+    }
+    foreach ($dns in $Config.dnsServers) { [void](ConvertTo-HKURoute ($dns + '/32')) }
     [void](Resolve-HKUPath $Config.runtimePath $ProjectRoot)
+}
+
+function ConvertTo-HKUDomain {
+    param([string]$Name)
+    $name = $Name.Trim().TrimEnd('.').ToLowerInvariant()
+    if ($name.Length -gt 253 -or $name -notmatch '^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$') {
+        throw 'Use an exact ASCII domain name, without URL, wildcard or port (IDNs must use punycode).'
+    }
+    return $name
 }
 
 function New-HKURoutingScript {
@@ -64,6 +78,7 @@ function New-HKURoutingScript {
     $lines = @('// Generated local split routes. Upstream script below is unmodified.',
         'var routeShell = WScript.CreateObject("WScript.Shell");',
         'var routeEnv = routeShell.Environment("Process");',
+        'routeEnv("HKU_DNS_SERVERS") = routeEnv("INTERNAL_IP4_DNS");',
         ('routeEnv("CISCO_SPLIT_INC") = "' + $routes.Count + '";'))
     for ($i = 0; $i -lt $routes.Count; $i++) {
         $lines += 'routeEnv("CISCO_SPLIT_INC_' + $i + '_ADDR") = "' + $routes[$i].address + '";'
@@ -74,7 +89,12 @@ function New-HKURoutingScript {
         'routeEnv("INTERNAL_IP4_DNS") = "";', 'routeEnv("INTERNAL_IP4_NBNS") = "";',
         'routeEnv("INTERNAL_IP6_ADDRESS") = "";', 'routeEnv("INTERNAL_IP6_NETMASK") = "";')
     $upstream = Get-Content -LiteralPath (Join-Path $ProjectRoot 'vendor\vpnc-script-win.js') -Raw -Encoding UTF8
-    [IO.File]::WriteAllText($Destination, (($lines -join "`r`n") + "`r`n" + $upstream), (New-Object Text.UTF8Encoding($false)))
+    $hook = 'var domainHook = "\"" + routeEnv("HKU_PS_EXE") + "\" -NoProfile -ExecutionPolicy Bypass -File \"" + routeEnv("HKU_DOMAIN_SCRIPT") + "\" -FromHook";'
+    $preHook = $hook + '\r\nif (routeEnv("reason") == "disconnect") { routeShell.Run(domainHook, 0, true); }'
+    $preHook = $preHook.Replace('\r\n', "`r`n")
+    $postHook = 'if (routeEnv("reason") == "connect" && accumulatedExitCode == 0) { if (routeShell.Run(domainHook, 0, false) != 0) { WScript.Echo("Domain route setup failed; see .local/domain-status.txt. Static routes remain available."); } }'
+    $upstream = $upstream.Replace('WScript.Quit(accumulatedExitCode);', $postHook + "`r`nWScript.Quit(accumulatedExitCode);")
+    [IO.File]::WriteAllText($Destination, (($lines -join "`r`n") + "`r`n" + $preHook + "`r`n" + $upstream), (New-Object Text.UTF8Encoding($false)))
 }
 
 function Get-HKUClientArguments {

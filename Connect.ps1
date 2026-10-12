@@ -48,6 +48,8 @@ try {
     [HkuProjectTunProbe]::End($session)
 } finally { [HkuProjectTunProbe]::Close($adapter) }
 $routeScript = Join-Path $PSScriptRoot '.local\vpnc-route.js'
+$env:HKU_PS_EXE = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+$env:HKU_DOMAIN_SCRIPT = Join-Path $PSScriptRoot 'DomainRoutes.ps1'
 New-HKURoutingScript $config $PSScriptRoot $routeScript
 $commonArgs = @(Get-HKUClientArguments $config)
 $probeArgs = $commonArgs + @('--non-inter')

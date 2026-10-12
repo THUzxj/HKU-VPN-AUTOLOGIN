@@ -38,7 +38,12 @@ if ($ConfigFile) {
     $config.vpn.proxy = $(if ($proxy -eq 'none') { '' } else { $proxy })
     $config.vpn.adapterName = Read-SetupValue 'Dedicated VPN adapter name' $config.vpn.adapterName
     $config.vpn.mtu = [int](Read-SetupValue 'Requested MTU' ([string]$config.vpn.mtu))
-    $config.routes = @((Read-SetupValue 'VPN target IPv4/CIDRs, comma separated (required; not domain names)' ($config.routes -join ',')) -split ',' | ForEach-Object { $_.Trim() })
+    $routeInput = Read-SetupValue 'VPN IPv4/CIDRs, comma separated; type none for domains only' ($config.routes -join ',')
+    $config.routes = @($routeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
+    if (-not $config.PSObject.Properties['domains']) { $config | Add-Member -NotePropertyName domains -NotePropertyValue @() }
+    if (-not $config.PSObject.Properties['dnsServers']) { $config | Add-Member -NotePropertyName dnsServers -NotePropertyValue @() }
+    $config.domains = @((Read-SetupValue 'Exact VPN domains, comma separated; optional' ($config.domains -join ',')) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $config.dnsServers = @((Read-SetupValue 'VPN DNS IPv4 addresses; empty uses server-provided DNS' ($config.dnsServers -join ',')) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $config.keepass.enabled = (Read-SetupValue 'Automatic MFA? y/n' $(if ($config.keepass.enabled) { 'y' } else { 'n' })) -ne 'n'
 }
 $config.keepass.database = Resolve-HKUPath $config.keepass.database $PSScriptRoot
