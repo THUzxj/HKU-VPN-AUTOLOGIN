@@ -1,4 +1,5 @@
 .local/
+dist/
 # Only the public configuration template belongs in Git.
 *.json
 !/examples/config.example.json
@@ -21,3 +22,6 @@ id_ed25519*
 credentials.json
 totp.json
 config.local.json
+**/bin/
+**/obj/
+.avalonia-build-tasks/

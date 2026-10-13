@@ -18,9 +18,9 @@ New-HKURoutingScript $config $root $scriptPath
 $script = Get-Content -LiteralPath $scriptPath -Raw
 if ($script -notmatch 'CISCO_SPLIT_INC"\) = "2"' -or $script -notmatch '10\.20\.30\.0' -or $script -notmatch 'INTERNAL_IP4_DNS"\) = ""') { throw 'Split route generation failed' }
 $config.routes = @()
-$rejected = $false
-try { Test-HKUConfig $config $root } catch { $rejected = $true }
-if (-not $rejected) { throw 'Empty routes were accepted' }
+Test-HKUConfig $config $root
+New-HKURoutingScript $config $root $scriptPath
+if ((Get-Content $scriptPath -Raw) -notmatch 'CISCO_SPLIT_INC"\) = "0"') { throw 'Empty target list must use zero split routes' }
 $config.routes = @('192.0.2.10/32')
 $config.keepass | Add-Member -NotePropertyName password -NotePropertyValue 'mock-secret'
 $rejected = $false

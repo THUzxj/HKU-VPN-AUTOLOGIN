@@ -4,6 +4,8 @@
 
 日常操作、双击断开、路由清理范围与故障处理见 [操作说明](docs/OPERATIONS.md)。
 
+Avalonia GUI 已提供 Setup、连接与路由、配置、诊断四页，以及 Windows 后端。解压 Windows 运行包后双击 `HKU-VPN.exe`（源码构建后也会生成此入口）；构建方法、演示模式与验证范围见 [GUI 使用说明](docs/GUI.md)。macOS 后端尚未实现。
+
 每次运行仍需确认 Windows 管理员提权，并输入一次 KeePassXC 数据库主密码。主密码、VPN 密码、TOTP 密钥和验证码不会写入项目配置，也不会放入进程命令行。用户名会作为 OpenConnect 的 `--user` 参数传入。
 
 这是独立客户端脚本，不是 HKU ITS 官方软件。当前版本针对 HKU 的 XML 登录表单与 `Enter Your Microsoft verification code` / `Response:` 提示，不是通用 Cisco VPN 自动登录工具。
@@ -78,7 +80,7 @@ setup 生成的配置位于 `.local/config.json`，仓库模板在 `examples/con
 | `vpn.tls12` | 默认 `true`，限制 TLS 1.2，适用于固定的 v9.12 GnuTLS 构建 |
 | `vpn.userAgent` | 默认使用兼容 HKU XML 表单的 AnyConnect Windows 标识 |
 | `runtimePath` | OpenConnect 和 DLL 目录，默认项目内 `.local/runtime` |
-| `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；与 `domains` 至少填写一项 |
+| `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；通常与 `domains` 合计至少填写一个目标 |
 | `domains` | 精确域名列表，经 VPN DNS 解析后添加 IPv4 路由，可省略 |
 | `dnsServers` | 用于域名查询的校园 IPv4 DNS；空列表使用 VPN 下发值 |
 
@@ -110,7 +112,7 @@ setup 可重复运行，不覆盖数据库，也不会把旧的明文 `credentia
 "dnsServers": []
 ```
 
-`domains` 是精确域名列表，不接受 URL、通配符或 `.hk` 后缀规则。`dnsServers` 留空时使用 VPN 下发的 IPv4 DNS；也可指定校园 DNS 的 IPv4 地址。至少需要一个固定路由或域名。旧配置不添加新字段仍可使用。
+`domains` 是精确域名列表，不接受 URL、通配符或 `.hk` 后缀规则。`dnsServers` 留空时使用 VPN 下发的 IPv4 DNS；也可指定校园 DNS 的 IPv4 地址。通常配置至少一个固定路由或域名；GUI 允许删除全部目标，此时不安装目标路由，不改变默认路由。旧配置不添加新字段仍可使用。
 
 基础隧道就绪后，后台脚本为校园 DNS 添加 VPN `/32` 路由，再显式向它查询每个域名的 A 记录，把全部返回 IP 加入 VPN。本次生成的路由只保存到 ActiveStore，正常断开时清理；全局 DNS 不改变。DNS 的临时路由保留到断开，供后续刷新使用。
 
@@ -151,6 +153,9 @@ rules:
 - [故障排查](docs/TROUBLESHOOTING.md)
 - [测试说明](docs/TESTING.md)
 - [连接、域名路由与断开操作](docs/OPERATIONS.md)
+- [GUI 使用与构建](docs/GUI.md)
+- [GUI 架构与实现计划](docs/GUI-PLAN.md)
+- [GitHub Actions 自动构建与 Release 发布](docs/RELEASING.md)
 
 ## 许可证
 

@@ -26,3 +26,14 @@
 当前验证覆盖本机 Windows 上的模拟登录、KeePassXC CLI、路由生成与离线 setup。首次下载/winget 安装需要在实际安装环境中验证；真实 HKU VPN 登录也需要实测。
 
 日常安装与配置见 [README](../README.md)，功能操作见 [操作说明](OPERATIONS.md)。
+
+## GUI 测试
+
+安装 .NET 10 SDK 后，在项目根目录执行：
+
+```powershell
+dotnet run --project gui/HkuVpn.Tests/HkuVpn.Tests.csproj -c Release -- .
+.\tests\Test-GuiBridge.ps1
+```
+
+覆盖配置保存/兼容、日志脱敏、模拟分段 MFA、手动 MFA、认证拒绝、取消、Windows 本机 IPC、演示连接生命周期、四页渲染以及模拟路由归属。不会访问真实账号或修改真实网络。测试截图和临时副本放在 `.local/`。真实 GUI 提权、校园连接和 macOS 支持不在离线测试证明范围内。

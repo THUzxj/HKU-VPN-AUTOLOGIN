@@ -52,7 +52,6 @@ function Test-HKUConfig {
     if ($Config.vpn.adapterName -notmatch '^[A-Za-z0-9_-]{1,64}$' -or $Config.vpn.adapterName -match '^(Mihomo|Clash|WLAN|Ethernet)$') { throw 'Use a dedicated VPN adapter name containing letters, digits, hyphens or underscores.' }
     if ($Config.vpn.mtu -lt 576 -or $Config.vpn.mtu -gt 1500) { throw 'MTU must be between 576 and 1500.' }
     if (-not $Config.vpn.userAgent -or $Config.vpn.userAgent -match '[\r\n]') { throw 'A single-line VPN User-Agent is required.' }
-    if (-not $Config.routes -and -not $Config.domains) { throw 'At least one IPv4 route or exact domain is required.' }
     foreach ($route in $Config.routes) { [void](ConvertTo-HKURoute $route) }
     foreach ($name in $Config.domains) {
         $normalized = ConvertTo-HKUDomain $name

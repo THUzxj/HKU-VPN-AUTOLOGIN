@@ -13,6 +13,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit
 }
 $runtime = Resolve-HKUPath $config.runtimePath $PSScriptRoot
+$ownerLock = $null
+try {
+$ownerLock = [IO.File]::Open((Join-Path $PSScriptRoot '.local\vpn-owner.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
 $client = Join-Path $runtime 'openconnect.exe'
 $wintunDll = Join-Path $runtime 'wintun.dll'
 foreach ($dependency in @($client, $wintunDll, $config.keepass.cli, $config.keepass.database)) {
@@ -23,9 +26,9 @@ if (Get-Process openconnect -ErrorAction SilentlyContinue) { throw 'Another Open
 if (Get-NetAdapter -Name $config.vpn.adapterName -ErrorAction SilentlyContinue) { throw 'The selected adapter already exists. Check its owner instead of deleting it blindly.' }
 if ($config.vpn.proxy) {
     $proxyUri = [Uri]$config.vpn.proxy
-    $socket = New-Object Net.Sockets.TcpClient
+    $socket = if ($proxyUri.DnsSafeHost.Contains(':')) { New-Object Net.Sockets.TcpClient([Net.Sockets.AddressFamily]::InterNetworkV6) } else { New-Object Net.Sockets.TcpClient }
     try {
-        $attempt = $socket.ConnectAsync($proxyUri.Host, $proxyUri.Port)
+        $attempt = $socket.ConnectAsync($proxyUri.DnsSafeHost, $proxyUri.Port)
         if (-not $attempt.Wait(5000) -or -not $socket.Connected) { throw 'Proxy connection failed. Start Clash/proxy first.' }
     } finally { $socket.Dispose() }
 }
@@ -92,3 +95,4 @@ try {
     $credentials = $null
     $master.Dispose()
 }
+} finally { if ($ownerLock) { $ownerLock.Dispose() } }

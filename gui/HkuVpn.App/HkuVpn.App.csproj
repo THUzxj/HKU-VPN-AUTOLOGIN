@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>WinExe</OutputType><AssemblyName>HkuVpn</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <ProjectReference Include="../HkuVpn.Core/HkuVpn.Core.csproj" />
+    <ProjectReference Include="../HkuVpn.Platform.Windows/HkuVpn.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>

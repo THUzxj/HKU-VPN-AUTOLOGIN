@@ -27,7 +27,7 @@ if ($verified) {
     if ($state.PSObject.Properties.Name -contains 'static') { $prefixes = @($state.static) }
     foreach ($prefix in $prefixes) {
         $staticRoutes += @(Get-NetRoute -PolicyStore ActiveStore -InterfaceIndex $state.index -DestinationPrefix $prefix -ErrorAction SilentlyContinue |
-            Where-Object { $_.NextHop -eq $state.address })
+            Where-Object { $_.NextHop -in @($state.address,'0.0.0.0') })
     }
 }
 # Cancel DNS work before stopping the tunnel; preserve session records until cleanup succeeds.
