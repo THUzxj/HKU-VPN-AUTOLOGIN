@@ -75,7 +75,7 @@ public sealed class HelperHost
                 await ProxyConnectivity.CheckAsync(config.Vpn.Proxy, ct);
             }
             var client = Path.Combine(VpnConfig.Resolve(root, config.RuntimePath), "openconnect.exe");
-            var common = new List<string> { "--protocol=anyconnect", "--os=win", "--useragent=" + config.Vpn.UserAgent, "--no-dtls" };
+            var common = new List<string> { "--protocol=anyconnect", "--os=win", "--useragent=" + config.Vpn.UserAgent, "--no-dtls", config.Vpn.ReconnectArgument };
             common.Add(config.Vpn.Proxy.Length > 0 ? "--proxy=" + config.Vpn.Proxy : "--no-proxy");
             if (config.Vpn.Tls12) common.Add("--gnutls-priority=NORMAL:-VERS-ALL:+VERS-TLS1.2");
             string? gateway = null; phase = "网关 TLS/XML 检查";
@@ -120,7 +120,7 @@ public sealed class HelperHost
                 credentials = default; master = null; verification.TrySetCanceled(ct); verifying.Cancel();
                 try { await verifyTask; } catch (OperationCanceledException) { }
             }
-            if (code != 0) throw new InvalidOperationException($"OpenConnect 已退出（{code}）；请检查认证、代理和网关。");
+            if (code != 0) throw new InvalidOperationException($"OpenConnect 已退出（{code}）；可能是网络恢复超时、代理不可达或网关会话失效。断网重连等待配置为 {config.Vpn.ReconnectTimeoutMinutes} 分钟；请检查后重新连接。");
         }
         catch (Exception error) when (error is not OperationCanceledException and not InvalidOperationException)
         {

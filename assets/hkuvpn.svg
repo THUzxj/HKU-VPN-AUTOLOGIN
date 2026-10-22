@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">HKUVPN</title>
+  <desc id="desc">Geometric HKU and VPN lettering in white and turquoise on a deep navy rounded square.</desc>
+  <rect width="256" height="256" rx="52" fill="#102D46"/>
+  <g fill="none" stroke-width="12" stroke-linecap="round" stroke-linejoin="round">
+    <g stroke="#FFFFFF">
+      <path d="M40 52 L40 108 M88 52 L88 108 M40 80 L88 80"/>
+      <path d="M108 52 L108 108 M152 52 L124 80 L152 108 M108 80 L124 80"/>
+      <path d="M172 52 L172 94 L186 108 L202 108 L216 94 L216 52"/>
+    </g>
+    <g stroke="#42E0C4">
+      <path d="M40 148 L64 204 L88 148"/>
+      <path d="M108 204 L108 148 L140 148 L152 160 L152 172 L140 184 L108 184"/>
+      <path d="M172 204 L172 148 L216 204 L216 148"/>
+    </g>
+  </g>
+</svg>

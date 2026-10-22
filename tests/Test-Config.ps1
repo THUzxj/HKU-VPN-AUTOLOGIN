@@ -3,6 +3,18 @@ $root = Split-Path $PSScriptRoot
 . (Join-Path $root 'lib\Config.ps1')
 $config = Get-Content (Join-Path $root 'examples\config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Test-HKUConfig $config $root
+if ('--reconnect-timeout=3600' -notin @(Get-HKUClientArguments $config)) { throw 'Configured reconnect timeout was not passed to OpenConnect' }
+foreach ($value in @(0,1441,1.5,'60',$true,$null)) {
+    $config.vpn.reconnectTimeoutMinutes=$value; $rejected=$false
+    try { Test-HKUConfig $config $root } catch { $rejected=$true }
+    if (-not $rejected) { throw 'Invalid reconnect wait accepted' }
+}
+$config.vpn.PSObject.Properties.Remove('reconnectTimeoutMinutes')
+Test-HKUConfig $config $root
+if ('--reconnect-timeout=300' -notin @(Get-HKUClientArguments $config)) { throw 'Legacy reconnect timeout default changed' }
+$config.vpn | Add-Member -NotePropertyName reconnectTimeoutMinutes -NotePropertyValue 1440
+Test-HKUConfig $config $root
+if ('--reconnect-timeout=86400' -notin @(Get-HKUClientArguments $config)) { throw 'Reconnect timeout upper boundary conversion failed' }
 $route = ConvertTo-HKURoute '10.20.30.47/24'
 if ($route.cidr -ne '10.20.30.0/24' -or $route.mask -ne '255.255.255.0') { throw 'CIDR normalization failed' }
 foreach ($invalid in @('0.0.0.0/0', '10.0.0.1/33', '999.1.1.1/32', 'hku.hk', '127.0.0.1/32', '224.0.0.1/32')) {

@@ -39,6 +39,7 @@ public sealed class MainWindow : Window
     private RouteRow? editingRoute;
     private Button? saveRoute;
     private bool CanManageRoutes => !busy && !disconnecting && (!active || tunnelConnected);
+    private readonly TextBox reconnectWait = new() { Name = "ReconnectTimeoutMinutesInput" };
     private readonly CheckBox automaticMfa = new() { Content = "自动提交 KeePassXC TOTP" }, tls12 = new() { Content = "TLS 1.2 兼容模式" };
     private readonly ObservableCollection<RouteRow> routeRows = [];
     private readonly ObservableCollection<DiagnosticRow> diagnosticRows = [];
@@ -50,7 +51,7 @@ public sealed class MainWindow : Window
     private CancellationTokenSource? debounce;
     private int runningOperations;
     private bool busy => runningOperations > 0;
-    private bool active, tunnelConnected, exitRequested, closeApproved, disconnecting;
+    private bool active, tunnelConnected, exitRequested, closeApproved, disconnecting, initialized;
     private DateTimeOffset? connectedAt;
     private TrayIcon? tray;
     private Task? connectionTask;
@@ -61,6 +62,7 @@ public sealed class MainWindow : Window
         this.root = root; this.demo = demo; configPath = Path.Combine(root, ".local", "config.json");
         backend = suppliedBackend ?? (demo ? new DemoBackend() : new WindowsBackend(root));
         Title = "HKU VPN" + (demo ? " · 演示模式" : ""); Width = 1100; Height = 820; MinWidth = 820; MinHeight = 640;
+        using (var iconStream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://HkuVpn/Assets/hkuvpn.ico"))) Icon = new WindowIcon(iconStream);
         Background = Brush.Parse("#F3F6FA");
         config = demo ? DemoConfig() : LoadConfig();
         var heading = new StackPanel { Spacing = 5, Children = { new TextBlock { Text = "HKU VPN", FontSize = 28, FontWeight = FontWeight.Bold },
@@ -77,7 +79,13 @@ public sealed class MainWindow : Window
         backend.Event += e => Dispatcher.UIThread.Post(() => HandleEvent(e));
         clock.Tick += (_, _) => { if (IsVisible && connectedAt != null) elapsed.Text = "已连接 " + (DateTimeOffset.Now - connectedAt.Value).ToString(@"hh\:mm\:ss"); };
         Closing += OnClosing;
-        Opened += async (_, _) => { SetupTray(); CheckDependencies(); if (File.Exists(configPath) && !demo) StartWatcher(); else ShowConfiguredRoutes(); await Task.CompletedTask; };
+        Opened += (_, _) => {
+            // Show() raises Opened again after Hide(); retain this window's tray and session UI.
+            if (initialized) return;
+            SetupTray(); CheckDependencies(); if (File.Exists(configPath) && !demo) StartWatcher(); else ShowConfiguredRoutes();
+            initialized = true;
+        };
+        Closed += (_, _) => DisposeTray();
         UpdateButtons();
     }
     private static VpnConfig DemoConfig() => new() { Keepass = new() { Cli = "keepassxc-cli", Database = "example.kdbx" }, Routes = ["192.0.2.10/32"], Domains = ["server.example.hk"] };
@@ -147,9 +155,10 @@ public sealed class MainWindow : Window
         Add("KeePassXC CLI", cli, true); Add("数据库 .kdbx", database, true); Add("TOTP 条目路径", entry); Add("凭据条目路径", credentialsEntry); Add("密钥文件（可选）", keyFile, true);
         Add("自动 MFA", automaticMfa); Add("HTTPS 网关（每行一项）", gateways); Add("HTTP 代理（空为直连）", proxy);
         Add("固定 IPv4/CIDR", fixedRoutes); Add("精确域名", domains); Add("校园 IPv4 DNS（可空）", dns);
+        Add("断网后等待重连（分钟，1–1440）", reconnectWait);
         var advanced = new Expander { Header = "高级配置", Content = Stack(Text("网卡名"), adapter, Text("运行库目录"), runtime, Text("MTU"), mtu, tls12, Text("User-Agent"), agent) };
         edits.AddRange([adapter, runtime, mtu, tls12, agent]);
-        return Page(Stack(form, advanced, Actions(ActionButton("校验并保存配置", SaveAsync), ActionButton("验证凭据并保存", VerifyAndSaveAsync)),
+        return Page(Stack(form, Text("重连等待填写 60 表示最多等待一小时；网络和代理恢复后尝试恢复原会话，网关会话失效仍需重新登录。下次连接生效。"), advanced, Actions(ActionButton("校验并保存配置", SaveAsync), ActionButton("验证凭据并保存", VerifyAndSaveAsync)),
             Text("连接期间本页锁定；IP/CIDR 与域名可在连接页修改并立即同步。不保存主密码、VPN 密码或 TOTP 密钥。")));
     }
     private Control DiagnosticsPage()
@@ -165,12 +174,13 @@ public sealed class MainWindow : Window
         cli.Text = value.Keepass.Cli; database.Text = value.Keepass.Database; entry.Text = value.Keepass.Entry; credentialsEntry.Text = value.Keepass.CredentialsEntry; keyFile.Text = value.Keepass.KeyFile;
         automaticMfa.IsChecked = value.Keepass.Enabled; gateways.Text = string.Join('\n', value.Vpn.Gateways); proxy.Text = value.Vpn.Proxy;
         adapter.Text = value.Vpn.AdapterName; mtu.Text = value.Vpn.Mtu.ToString(); runtime.Text = value.RuntimePath; tls12.IsChecked = value.Vpn.Tls12; agent.Text = value.Vpn.UserAgent;
+        reconnectWait.Text = value.Vpn.ReconnectTimeoutMinutes.ToString();
         fixedRoutes.Text = string.Join('\n', value.Routes); domains.Text = string.Join('\n', value.Domains); dns.Text = string.Join('\n', value.DnsServers);
     }
     private VpnConfig Draft() => new()
     {
         RuntimePath = runtime.Text?.Trim() ?? "", Keepass = new() { Cli = cli.Text?.Trim() ?? "", Database = database.Text?.Trim() ?? "", Entry = entry.Text?.Trim() ?? "", CredentialsEntry = credentialsEntry.Text?.Trim() ?? "", KeyFile = keyFile.Text?.Trim() ?? "", Enabled = automaticMfa.IsChecked == true },
-        Vpn = new() { Gateways = Split(gateways.Text), Proxy = proxy.Text?.Trim() ?? "", AdapterName = adapter.Text?.Trim() ?? "", Mtu = int.TryParse(mtu.Text, out var size) ? size : 0, Tls12 = tls12.IsChecked == true, UserAgent = agent.Text?.Trim() ?? "" },
+        Vpn = new() { Gateways = Split(gateways.Text), Proxy = proxy.Text?.Trim() ?? "", AdapterName = adapter.Text?.Trim() ?? "", Mtu = int.TryParse(mtu.Text, out var size) ? size : 0, ReconnectTimeoutMinutes = int.TryParse(reconnectWait.Text, out var wait) ? wait : 0, Tls12 = tls12.IsChecked == true, UserAgent = agent.Text?.Trim() ?? "" },
         Routes = Split(fixedRoutes.Text), Domains = Split(domains.Text), DnsServers = Split(dns.Text)
     };
     private static string[] Split(string? text) => (text ?? "").Split(['\n', '\r', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -381,15 +391,11 @@ public sealed class MainWindow : Window
     }
     private void SetupTray()
     {
-        if (!OperatingSystem.IsWindows() || demo) return;
+        if (tray != null || !OperatingSystem.IsWindows() || demo) return;
         var menu = new NativeMenu(); var show = new NativeMenuItem("打开 HKU VPN"); show.Click += (_, _) => { Show(); Activate(); };
         var stop = new NativeMenuItem("断开 VPN"); stop.Click += async (_, _) => await ExecuteAsync(DisconnectAsync, allowDuringConnection: true);
         var quit = new NativeMenuItem("退出并清理"); quit.Click += async (_, _) => await ExitAsync(); menu.Items.Add(show); menu.Items.Add(stop); menu.Items.Add(quit);
-        // Icon is generated locally; no external asset is required.
-        using var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(32, 32), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Opaque);
-        using (var locked = bitmap.Lock()) { var pixels = Enumerable.Repeat(unchecked((int)0xFF2667A8), 32 * 32).ToArray(); System.Runtime.InteropServices.Marshal.Copy(pixels, 0, locked.Address, pixels.Length); }
-        using var bytes = new MemoryStream(); bitmap.Save(bytes); bytes.Position = 0;
-        tray = new TrayIcon { Icon = new WindowIcon(bytes), ToolTipText = "HKU VPN · 双击打开", Menu = menu, IsVisible = true };
+        tray = new TrayIcon { Icon = Icon, ToolTipText = "HKU VPN · 打开", Menu = menu, IsVisible = true };
         tray.Clicked += (_, _) => { Show(); Activate(); };
     }
     private void OnClosing(object? sender, WindowClosingEventArgs e)
@@ -399,6 +405,13 @@ public sealed class MainWindow : Window
         if (active && tray != null) { Note("窗口已隐藏到托盘，VPN 仍在连接。退出请使用托盘菜单。 "); Hide(); }
         else _ = ExitAsync();
     }
+    private void DisposeTray()
+    {
+        var owned = tray; tray = null;
+        if (owned == null) return;
+        owned.IsVisible = false;
+        owned.Dispose();
+    }
     private async Task ExitAsync()
     {
         if (exitRequested || busy) { Note("请等待当前操作完成后退出。"); return; }
@@ -406,7 +419,7 @@ public sealed class MainWindow : Window
         try
         {
             if (active) await DisconnectAsync();
-            await backend.DisposeAsync(); watcher?.Dispose(); debounce?.Cancel(); clock.Stop(); tray?.Dispose(); closeApproved = true; Close();
+            await backend.DisposeAsync(); watcher?.Dispose(); debounce?.Cancel(); clock.Stop(); DisposeTray(); closeApproved = true; Close();
         }
         catch (Exception error) { exitRequested = false; Show(); Note("退出清理失败，请重试断开：" + SafeLog.Redact(error.Message)); }
     }

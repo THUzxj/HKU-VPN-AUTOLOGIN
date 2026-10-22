@@ -14,6 +14,7 @@
     "proxy": "http://127.0.0.1:7890",
     "adapterName": "HKU-OpenConnect",
     "mtu": 1200,
+    "reconnectTimeoutMinutes": 60,
     "tls12": true,
     "userAgent": "AnyConnect Windows 5.1.12.146"
   },

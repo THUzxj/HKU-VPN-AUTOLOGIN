@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>WinExe</OutputType><AssemblyName>HkuVpn</AssemblyName></PropertyGroup>
+  <PropertyGroup><OutputType>WinExe</OutputType><AssemblyName>HkuVpn</AssemblyName><ApplicationIcon>../../assets/hkuvpn.ico</ApplicationIcon></PropertyGroup>
   <ItemGroup>
+    <AvaloniaResource Include="../../assets/hkuvpn.ico" Link="Assets/hkuvpn.ico" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
     <ProjectReference Include="../HkuVpn.Core/HkuVpn.Core.csproj" />

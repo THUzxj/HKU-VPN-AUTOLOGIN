@@ -80,6 +80,7 @@ setup 生成的配置位于 `.local/config.json`，仓库模板在 `examples/con
 | `vpn.tls12` | 默认 `true`，限制 TLS 1.2，适用于固定的 v9.12 GnuTLS 构建 |
 | `vpn.userAgent` | 默认使用兼容 HKU XML 表单的 AnyConnect Windows 标识 |
 | `runtimePath` | OpenConnect 和 DLL 目录，默认项目内 `.local/runtime` |
+| `vpn.reconnectTimeoutMinutes` | 断网后等待原会话恢复的分钟数（1–1440）；模板为 60，旧配置缺省为 5；下次连接生效 |
 | `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；通常与 `domains` 合计至少填写一个目标 |
 | `domains` | 精确域名列表，经 VPN DNS 解析后添加 IPv4 路由，可省略 |
 | `dnsServers` | 用于域名查询的校园 IPv4 DNS；空列表使用 VPN 下发值 |

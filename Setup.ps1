@@ -38,6 +38,8 @@ if ($ConfigFile) {
     $config.vpn.proxy = $(if ($proxy -eq 'none') { '' } else { $proxy })
     $config.vpn.adapterName = Read-SetupValue 'Dedicated VPN adapter name' $config.vpn.adapterName
     $config.vpn.mtu = [int](Read-SetupValue 'Requested MTU' ([string]$config.vpn.mtu))
+    $wait = [int](Read-SetupValue 'Minutes to wait for reconnect after network loss (1-1440)' ([string](Get-HKUReconnectTimeoutMinutes $config)))
+    $config.vpn | Add-Member -NotePropertyName reconnectTimeoutMinutes -NotePropertyValue $wait -Force
     $routeInput = Read-SetupValue 'VPN IPv4/CIDRs, comma separated; type none for domains only' ($config.routes -join ',')
     $config.routes = @($routeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
     if (-not $config.PSObject.Properties['domains']) { $config | Add-Member -NotePropertyName domains -NotePropertyValue @() }

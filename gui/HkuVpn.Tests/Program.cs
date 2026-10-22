@@ -112,6 +112,17 @@ public static class Program
         { var rejected = false; try { _ = VpnConfig.NormalizeDomain(value); } catch { rejected = true; } Assert(rejected, "invalid domain accepted"); }
         var config = new VpnConfig { Keepass = new() { Cli = "mock-cli", Database = "mock.kdbx" }, Routes = [], Domains = ["server.example.hk"] };
         config.Validate();
+        Assert(JsonSerializer.Deserialize<GatewayConfig>("{}", VpnConfig.Json)!.ReconnectTimeoutMinutes == 5, "legacy reconnect wait default");
+        foreach (var minutes in new[] { 1, 60, 1440 }) {
+            var draft = config.Clone(); draft.Vpn.ReconnectTimeoutMinutes = minutes; draft.Validate();
+            Assert(draft.Vpn.ReconnectArgument == "--reconnect-timeout=" + minutes * 60, "reconnect wait seconds passed to native CLI");
+            Assert(draft.Clone().Vpn.ReconnectTimeoutMinutes == minutes, "reconnect wait config round trip");
+        }
+        foreach (var minutes in new[] { 0, -1, 1441, int.MaxValue }) {
+            var rejected = false; var draft = config.Clone(); draft.Vpn.ReconnectTimeoutMinutes = minutes;
+            try { draft.Validate(); } catch (InvalidDataException) { rejected = true; }
+            Assert(rejected, "invalid reconnect wait accepted");
+        }
         var added = RouteTargets.Change(config, RouteKind.Fixed, null, "10.20.30.47/24");
         Assert(added.Routes.Single() == "10.20.30.0/24" && config.Routes.Length == 0, "route add must normalize and preserve source");
         var edited = RouteTargets.Change(added, RouteKind.Fixed, "10.20.30.0/24", "192.0.2.31");
@@ -184,6 +195,7 @@ public static class Program
         AppBuilder.Configure<VpnApplication>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false }).SetupWithoutStarting();
         var window = new MainWindow(root, true); window.Show(); Dispatcher.UIThread.RunJobs();
         Assert(window.PageCount == 4, "four pages missing"); Assert(window.RouteCount == 2, "configured routes missing");
+        Assert(window.Icon != null, "embedded HKUVPN window icon missing");
         var tabs = window.GetVisualDescendants().OfType<TabControl>().Single();
         var output = Path.Combine(root, ".local", "gui-tests"); Directory.CreateDirectory(output);
         for (var page = 0; page < 4; page++)
@@ -191,6 +203,11 @@ public static class Program
             tabs.SelectedIndex = page; Dispatcher.UIThread.RunJobs();
             using var frame = window.CaptureRenderedFrame(); Assert(frame != null, "page not rendered"); frame!.Save(Path.Combine(output, $"page-{page}.png"));
         }
+        tabs.SelectedIndex = 2; Dispatcher.UIThread.RunJobs();
+        var waitInput = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "ReconnectTimeoutMinutesInput");
+        Assert(waitInput.Text == "5", "reconnect wait not populated"); waitInput.Text = "60";
+        window.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "校验并保存配置").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Pump(100); Assert(waitInput.Text == "60" && window.RouteCount == 2, "reconnect wait save altered targets");
         tabs.SelectedIndex = 1; Dispatcher.UIThread.RunJobs();
         var input = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "RouteTargetInput");
         var search = window.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "RouteSearchInput");
@@ -212,6 +229,11 @@ public static class Program
         var button = window.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "连接 VPN");
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Pump(500); Assert(window.RouteCount == 3, "connected route rows missing");
+        var repeatedOpens = 0;
+        window.Opened += (_, _) => repeatedOpens++;
+        for (var i = 0; i < 3; i++) { window.Hide(); Pump(20); window.Show(); Pump(30); }
+        Assert(repeatedOpens == 3, "hidden window reopen lifecycle not exercised");
+        Assert(window.RouteCount == 3 && !button.IsEnabled, "reopening must not reset connected session or rerun initial route setup");
         kind.SelectedIndex = 0; input.Text = "198.51.100.7"; Click("AddRoute"); Assert(window.RouteCount == 4, "connected route add refresh");
         RowClick("198.51.100.7/32", "编辑"); input.Text = "198.51.100.9/24"; Click("SaveRouteEdit");
         RowClick("198.51.100.0/24", "删除"); Assert(window.RouteCount == 3, "connected route edit/delete refresh");

@@ -28,7 +28,7 @@ function Test-HKUConfig {
     $allowed = @{
         root = @('schemaVersion','runtimePath','keepass','vpn','routes','domains','dnsServers')
         keepass = @('cli','database','entry','credentialsEntry','keyFile','enabled')
-        vpn = @('gateways','proxy','adapterName','mtu','tls12','userAgent')
+        vpn = @('gateways','proxy','adapterName','mtu','tls12','userAgent','reconnectTimeoutMinutes')
     }
     foreach ($section in @('root','keepass','vpn')) {
         $value = $(if ($section -eq 'root') { $Config } else { $Config.$section })
@@ -51,6 +51,7 @@ function Test-HKUConfig {
     }
     if ($Config.vpn.adapterName -notmatch '^[A-Za-z0-9_-]{1,64}$' -or $Config.vpn.adapterName -match '^(Mihomo|Clash|WLAN|Ethernet)$') { throw 'Use a dedicated VPN adapter name containing letters, digits, hyphens or underscores.' }
     if ($Config.vpn.mtu -lt 576 -or $Config.vpn.mtu -gt 1500) { throw 'MTU must be between 576 and 1500.' }
+    [void](Get-HKUReconnectTimeoutMinutes $Config)
     if (-not $Config.vpn.userAgent -or $Config.vpn.userAgent -match '[\r\n]') { throw 'A single-line VPN User-Agent is required.' }
     foreach ($route in $Config.routes) { [void](ConvertTo-HKURoute $route) }
     foreach ($name in $Config.domains) {
@@ -96,9 +97,17 @@ function New-HKURoutingScript {
     [IO.File]::WriteAllText($Destination, (($lines -join "`r`n") + "`r`n" + $preHook + "`r`n" + $upstream), (New-Object Text.UTF8Encoding($false)))
 }
 
+function Get-HKUReconnectTimeoutMinutes {
+    param($Config)
+    if (-not $Config.vpn.PSObject.Properties['reconnectTimeoutMinutes']) { return 5 }
+    $minutes = $Config.vpn.reconnectTimeoutMinutes
+    if (($minutes -isnot [int] -and $minutes -isnot [long]) -or $minutes -lt 1 -or $minutes -gt 1440) { throw 'vpn.reconnectTimeoutMinutes must be an integer between 1 and 1440.' }
+    return [int]$minutes
+}
 function Get-HKUClientArguments {
     param($Config)
     $arguments = @('--protocol=anyconnect', '--os=win', ('--useragent=' + $Config.vpn.userAgent), '--no-dtls')
+    $arguments += '--reconnect-timeout=' + ((Get-HKUReconnectTimeoutMinutes $Config) * 60)
     if ($Config.vpn.proxy) { $arguments += '--proxy=' + $Config.vpn.proxy } else { $arguments += '--no-proxy' }
     if ($Config.vpn.tls12 -eq $true) { $arguments += '--gnutls-priority=NORMAL:-VERS-ALL:+VERS-TLS1.2' }
     return $arguments

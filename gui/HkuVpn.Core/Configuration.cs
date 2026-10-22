@@ -41,6 +41,7 @@ public sealed class VpnConfig
             Regex.IsMatch(Vpn.AdapterName, "^(Mihomo|Clash|WLAN|Ethernet)$", RegexOptions.IgnoreCase))
             throw new InvalidDataException("请使用专用网卡名称，仅含字母、数字、下划线或连字符。");
         if (Vpn.Mtu is < 576 or > 1500) throw new InvalidDataException("MTU 应为 576–1500。");
+        if (Vpn.ReconnectTimeoutMinutes is < 1 or > 1440) throw new InvalidDataException("断网重连等待时间应为 1–1440 分钟。");
         if (string.IsNullOrWhiteSpace(Vpn.UserAgent) || Vpn.UserAgent.IndexOfAny(['\r', '\n']) >= 0)
             throw new InvalidDataException("User-Agent 必须为非空单行。");
         Routes = Routes.Select(NormalizeRoute).Distinct().ToArray();
@@ -93,6 +94,8 @@ public sealed class KeepassConfig
 }
 public sealed class GatewayConfig
 {
+    public int ReconnectTimeoutMinutes { get; set; } = 5;
+    [JsonIgnore] public string ReconnectArgument => "--reconnect-timeout=" + (ReconnectTimeoutMinutes * 60).ToString(System.Globalization.CultureInfo.InvariantCulture);
     public string[] Gateways { get; set; } = ["https://vpn2fa-b.hku.hk", "https://vpn2fa-a.hku.hk"];
     public string Proxy { get; set; } = "";
     public string AdapterName { get; set; } = "HKU-OpenConnect";
