@@ -1,4 +1,4 @@
-param([string]$RuntimeArchive)
+﻿param([string]$RuntimeArchive)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $work = Join-Path $root '.local\tests'
@@ -16,5 +16,5 @@ function Read-Host {
 }
 . (Join-Path $root 'Setup.ps1') -ConfigFile $configPath -RuntimeArchive $RuntimeArchive -SkipInstall
 $generated = Get-Content (Join-Path $root '.local\config.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-if ($generated.routes[0] -ne '192.0.2.10/32' -or -not (Test-Path (Join-Path $root '.local\vpnc-route.js'))) { throw 'Setup output mismatch' }
+if ($generated.routes[0] -ne '147.8.0.0/16' -or $generated.dnsSuffixes.Count -ne 4 -or $generated.dnsServers.Count -ne 2 -or -not (Test-Path (Join-Path $root '.local\vpnc-route.js'))) { throw 'Setup output mismatch' }
 Write-Output 'Offline setup and credential validation OK with a mock database. No VPN login or system route changes.'

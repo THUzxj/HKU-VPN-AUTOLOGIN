@@ -1,4 +1,4 @@
-param([string]$ConfigFile, [string]$RuntimeArchive, [string]$DownloadProxy, [switch]$SkipInstall, [switch]$SkipCredentialCheck)
+﻿param([string]$ConfigFile, [string]$RuntimeArchive, [string]$DownloadProxy, [switch]$SkipInstall, [switch]$SkipCredentialCheck)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\Config.ps1')
 . (Join-Path $PSScriptRoot 'lib\Dependencies.ps1')
@@ -22,7 +22,7 @@ if ($ConfigFile) {
     if (Test-Path -LiteralPath $keepassGui) { Start-Process -FilePath $keepassGui }
     $existing = Join-Path $PSScriptRoot '.local\config.json'
     if (Test-Path -LiteralPath $existing) { $config = Get-Content -LiteralPath $existing -Raw -Encoding UTF8 | ConvertFrom-Json }
-    else { $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'examples\config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json; $config.keepass.database = ''; $config.routes = @() }
+    else { $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'examples\config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json; $config.keepass.database = '' }
     $detectedCli = Find-HKUExecutable 'keepassxc-cli.exe' @("$env:ProgramFiles\KeePassXC\keepassxc-cli.exe")
     $config.keepass.cli = Read-SetupValue 'KeePassXC CLI path (installed automatically if missing)' $(if ($detectedCli) { $detectedCli } else { "$env:ProgramFiles\KeePassXC\keepassxc-cli.exe" })
     do {
@@ -44,6 +44,8 @@ if ($ConfigFile) {
     $config.routes = @($routeInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
     if (-not $config.PSObject.Properties['domains']) { $config | Add-Member -NotePropertyName domains -NotePropertyValue @() }
     if (-not $config.PSObject.Properties['dnsServers']) { $config | Add-Member -NotePropertyName dnsServers -NotePropertyValue @() }
+    if (-not $config.PSObject.Properties['dnsSuffixes']) { $config | Add-Member -NotePropertyName dnsSuffixes -NotePropertyValue @() }
+    $config.dnsSuffixes = @((Read-SetupValue 'DNS suffixes, comma separated; type none to disable' ($config.dnsSuffixes -join ',')) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and $_ -ne 'none' })
     $config.domains = @((Read-SetupValue 'Exact VPN domains, comma separated; optional' ($config.domains -join ',')) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $config.dnsServers = @((Read-SetupValue 'VPN DNS IPv4 addresses; empty uses server-provided DNS' ($config.dnsServers -join ',')) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $config.keepass.enabled = (Read-SetupValue 'Automatic MFA? y/n' $(if ($config.keepass.enabled) { 'y' } else { 'n' })) -ne 'n'

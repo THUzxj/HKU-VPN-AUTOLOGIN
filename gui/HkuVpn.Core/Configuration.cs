@@ -15,6 +15,7 @@ public sealed class VpnConfig
     public string[] Routes { get; set; } = [];
     public string[] Domains { get; set; } = [];
     public string[] DnsServers { get; set; } = [];
+    public string[] DnsSuffixes { get; set; } = [];
     public static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true,
@@ -24,7 +25,7 @@ public sealed class VpnConfig
         ?? throw new InvalidDataException("配置为空。");
     public void Validate()
     {
-        if (SchemaVersion != 1 || Keepass is null || Vpn is null || Routes is null || Domains is null || DnsServers is null)
+        if (SchemaVersion != 1 || Keepass is null || Vpn is null || Routes is null || Domains is null || DnsServers is null || DnsSuffixes is null)
             throw new InvalidDataException("配置结构不完整或版本不支持。");
         if (string.IsNullOrWhiteSpace(RuntimePath) || string.IsNullOrWhiteSpace(Keepass.Cli) ||
             string.IsNullOrWhiteSpace(Keepass.Database) || string.IsNullOrWhiteSpace(Keepass.Entry))
@@ -49,6 +50,7 @@ public sealed class VpnConfig
         foreach (var domain in Domains)
             if (Vpn.Gateways.Any(g => new Uri(g).Host.Equals(domain, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidDataException("不能把 VPN 网关自身加入目标域名。");
+        DnsSuffixes = DnsSuffixes.Select(NormalizeDomain).Distinct().ToArray();
         foreach (var dns in DnsServers) _ = NormalizeRoute(dns + "/32");
     }
     public static string NormalizeDomain(string value)

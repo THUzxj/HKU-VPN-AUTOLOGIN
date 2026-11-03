@@ -112,6 +112,11 @@ public static class Program
         { var rejected = false; try { _ = VpnConfig.NormalizeDomain(value); } catch { rejected = true; } Assert(rejected, "invalid domain accepted"); }
         var config = new VpnConfig { Keepass = new() { Cli = "mock-cli", Database = "mock.kdbx" }, Routes = [], Domains = ["server.example.hk"] };
         config.Validate();
+        Assert(config.DnsSuffixes.Length == 0, "legacy config must not acquire suffix rules");
+        config.DnsSuffixes = ["HKU.HK.", "hku.hk", "hku.global"];
+        config.Validate();
+        Assert(config.DnsSuffixes.SequenceEqual(new[] { "hku.hk", "hku.global" }), "suffix normalization and deduplication");
+        Assert(config.Clone().DnsSuffixes.SequenceEqual(config.DnsSuffixes), "GUI config clone lost DNS suffixes");
         Assert(JsonSerializer.Deserialize<GatewayConfig>("{}", VpnConfig.Json)!.ReconnectTimeoutMinutes == 5, "legacy reconnect wait default");
         foreach (var minutes in new[] { 1, 60, 1440 }) {
             var draft = config.Clone(); draft.Vpn.ReconnectTimeoutMinutes = minutes; draft.Validate();
@@ -142,6 +147,7 @@ public static class Program
         {
             var file = Path.Combine(folder, "config.json"); config.Save(file);
             Assert(VpnConfig.Load(file).Domains.Single() == "server.example.hk", "config round trip");
+            Assert(VpnConfig.Load(file).DnsSuffixes.SequenceEqual(config.DnsSuffixes), "GUI config save lost DNS suffixes");
             var old = File.ReadAllText(file); config.Domains = ["*.hk"];
             try { config.Save(file); } catch (InvalidDataException) { }
             Assert(File.ReadAllText(file) == old, "invalid save changed old config");

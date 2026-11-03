@@ -1,8 +1,19 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 . (Join-Path $root 'lib\Config.ps1')
 $config = Get-Content (Join-Path $root 'examples\config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 Test-HKUConfig $config $root
+if ($config.routes.Count -ne 7 -or $config.dnsSuffixes.Count -ne 4 -or ($config.dnsServers -join ',') -ne '147.8.235.73,147.8.235.74') { throw 'HKU routing defaults missing' }
+foreach ($badSuffix in @('*.hku.hk','.hku.hk','https://hku.hk')) {
+    $badConfig = $config | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $badConfig.dnsSuffixes = @($badSuffix)
+    $rejected = $false
+    try { Test-HKUConfig $badConfig $root } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Invalid DNS suffix accepted' }
+}
+$legacyConfig = $config | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$legacyConfig.PSObject.Properties.Remove('dnsSuffixes')
+Test-HKUConfig $legacyConfig $root
 if ('--reconnect-timeout=3600' -notin @(Get-HKUClientArguments $config)) { throw 'Configured reconnect timeout was not passed to OpenConnect' }
 foreach ($value in @(0,1441,1.5,'60',$true,$null)) {
     $config.vpn.reconnectTimeoutMinutes=$value; $rejected=$false

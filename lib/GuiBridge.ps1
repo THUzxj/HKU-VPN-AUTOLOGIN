@@ -62,8 +62,12 @@ function Get-GuiSnapshot {
         }
         foreach ($dns in $state.dns) {
             $prefix = $dns + '/32'; $exists = [bool]($actual | Where-Object { $_.DestinationPrefix -eq $prefix -and $_.NextHop -in @($state.address,'0.0.0.0') })
-            $rows += @{source='VPN DNS';target=$dns;prefix=$prefix;status=$(if ($exists) {'已安装'} else {'未应用'});detail='仅查询使用，未替换全局 DNS'}
+            $rows += @{source='VPN DNS';target=$dns;prefix=$prefix;status=$(if ($exists) {'已安装'} else {'未应用'});detail='校园 DNS 专用路由；默认 DNS 不变'}
         }
+    }
+    foreach ($suffix in $config.dnsSuffixes) {
+        $rules = @(); if ($state.dnsPolicyOwner) { $rules = @(Get-DnsClientNrptRule -ErrorAction SilentlyContinue | Where-Object { $_.Comment -eq $state.dnsPolicyOwner -and ('.' + $suffix) -in $_.Namespace }) }
+        $rows += @{source='DNS 后缀';target=$suffix;prefix=($state.dns -join ', ');status=$(if ($verified -and $rules.Count) {'已安装'} else {'未应用'});detail='根域及子域使用校园 DNS；网关使用默认 DNS'}
     }
     $status = ''
     $statusPath = Join-Path $root '.local\domain-status.txt'

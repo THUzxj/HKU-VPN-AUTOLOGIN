@@ -30,7 +30,7 @@ public sealed class MainWindow : Window
     private readonly TextBlock dependencyStatus = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock elapsed = new();
     private readonly TextBox logs = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 200, MaxHeight = 350 };
-    private readonly TextBox cli = Field(), database = Field(), entry = Field(), credentialsEntry = Field(), keyFile = Field(), gateways = Field(true), proxy = Field(), adapter = Field(), mtu = Field(), runtime = Field(), agent = Field(), fixedRoutes = Field(true), domains = Field(true), dns = Field(true), archive = Field();
+    private readonly TextBox cli = Field(), database = Field(), entry = Field(), credentialsEntry = Field(), keyFile = Field(), gateways = Field(true), proxy = Field(), adapter = Field(), mtu = Field(), runtime = Field(), agent = Field(), fixedRoutes = Field(true), domains = Field(true), dns = Field(true), dnsSuffixes = Field(true), archive = Field();
     private readonly TextBox routeInput = new() { Name = "RouteTargetInput", MinWidth = 250, Watermark = "IPv4/CIDR 或完整域名" };
     private readonly TextBox routeSearch = new() { Name = "RouteSearchInput", MinWidth = 300, Watermark = "搜索目标、IP、来源或状态" };
     private readonly ComboBox routeKind = new() { Name = "RouteKindInput", ItemsSource = new[] { "IPv4 / CIDR", "域名" }, SelectedIndex = 0, MinWidth = 130 };
@@ -92,7 +92,8 @@ public sealed class MainWindow : Window
     private VpnConfig LoadConfig()
     {
         try { if (File.Exists(configPath)) { var value = VpnConfig.Load(configPath); value.Validate(); return value; } } catch { notice.Text = "已有配置无法读取或无效，请在配置页检查；未覆盖文件。"; }
-        var defaults = new VpnConfig();
+        var defaults = VpnConfig.Load(Path.Combine(root, "examples", "config.example.json"));
+        defaults.Keepass.Database = "";
         if (OperatingSystem.IsWindows()) defaults.Keepass.Cli = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "KeePassXC", "keepassxc-cli.exe");
         return defaults;
     }
@@ -154,7 +155,7 @@ public sealed class MainWindow : Window
         }
         Add("KeePassXC CLI", cli, true); Add("数据库 .kdbx", database, true); Add("TOTP 条目路径", entry); Add("凭据条目路径", credentialsEntry); Add("密钥文件（可选）", keyFile, true);
         Add("自动 MFA", automaticMfa); Add("HTTPS 网关（每行一项）", gateways); Add("HTTP 代理（空为直连）", proxy);
-        Add("固定 IPv4/CIDR", fixedRoutes); Add("精确域名", domains); Add("校园 IPv4 DNS（可空）", dns);
+        Add("固定 IPv4/CIDR", fixedRoutes); Add("精确域名", domains); Add("DNS 后缀（根域及子域）", dnsSuffixes); Add("校园 IPv4 DNS（可空）", dns);
         Add("断网后等待重连（分钟，1–1440）", reconnectWait);
         var advanced = new Expander { Header = "高级配置", Content = Stack(Text("网卡名"), adapter, Text("运行库目录"), runtime, Text("MTU"), mtu, tls12, Text("User-Agent"), agent) };
         edits.AddRange([adapter, runtime, mtu, tls12, agent]);
@@ -175,13 +176,13 @@ public sealed class MainWindow : Window
         automaticMfa.IsChecked = value.Keepass.Enabled; gateways.Text = string.Join('\n', value.Vpn.Gateways); proxy.Text = value.Vpn.Proxy;
         adapter.Text = value.Vpn.AdapterName; mtu.Text = value.Vpn.Mtu.ToString(); runtime.Text = value.RuntimePath; tls12.IsChecked = value.Vpn.Tls12; agent.Text = value.Vpn.UserAgent;
         reconnectWait.Text = value.Vpn.ReconnectTimeoutMinutes.ToString();
-        fixedRoutes.Text = string.Join('\n', value.Routes); domains.Text = string.Join('\n', value.Domains); dns.Text = string.Join('\n', value.DnsServers);
+        fixedRoutes.Text = string.Join('\n', value.Routes); domains.Text = string.Join('\n', value.Domains); dns.Text = string.Join('\n', value.DnsServers); dnsSuffixes.Text = string.Join('\n', value.DnsSuffixes);
     }
     private VpnConfig Draft() => new()
     {
         RuntimePath = runtime.Text?.Trim() ?? "", Keepass = new() { Cli = cli.Text?.Trim() ?? "", Database = database.Text?.Trim() ?? "", Entry = entry.Text?.Trim() ?? "", CredentialsEntry = credentialsEntry.Text?.Trim() ?? "", KeyFile = keyFile.Text?.Trim() ?? "", Enabled = automaticMfa.IsChecked == true },
         Vpn = new() { Gateways = Split(gateways.Text), Proxy = proxy.Text?.Trim() ?? "", AdapterName = adapter.Text?.Trim() ?? "", Mtu = int.TryParse(mtu.Text, out var size) ? size : 0, ReconnectTimeoutMinutes = int.TryParse(reconnectWait.Text, out var wait) ? wait : 0, Tls12 = tls12.IsChecked == true, UserAgent = agent.Text?.Trim() ?? "" },
-        Routes = Split(fixedRoutes.Text), Domains = Split(domains.Text), DnsServers = Split(dns.Text)
+        Routes = Split(fixedRoutes.Text), Domains = Split(domains.Text), DnsServers = Split(dns.Text), DnsSuffixes = Split(dnsSuffixes.Text)
     };
     private static string[] Split(string? text) => (text ?? "").Split(['\n', '\r', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
     private async Task SaveAsync()

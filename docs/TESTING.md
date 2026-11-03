@@ -11,6 +11,8 @@
 .\tests\Test-Domains.ps1
 ```
 
+`Test-Domains` 还模拟验证后缀及根域 DNS、网关例外、刷新去重、删除后缀和网卡消失后的规则清理；所有 NRPT、DNS 缓存和路由操作均被替身函数拦截，不修改真实网络。
+
 `Test-KeePass` 使用公开 RFC 测试密钥创建临时数据库，验证用户名、密码、TOTP 和错误主密码拒绝；`Test-MFA` 模拟分段提示和验证码提交。
 
 完整离线 setup 测试会用模拟配置覆盖 `.local/config.json`，只应在测试副本中执行，不要在已配置的日常项目上运行：

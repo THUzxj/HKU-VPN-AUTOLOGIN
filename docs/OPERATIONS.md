@@ -49,7 +49,7 @@
 
 可以在 GUI 连接与路由页添加、编辑、删除和搜索固定 IPv4/CIDR 与完整域名，连接期间立即同步。也可以手动修改 `.local/config.json` 的 `routes` 或 `domains` 列表，再运行刷新命令；刷新会同步两类目标。所有查询成功后才清理不再需要的动态路由，查询失败时保留已有路由。
 
-目前支持精确域名和 IPv4，不支持 `*.hk`、按 `.hk` 后缀匹配、AAAA/IPv6 或自动 TTL 定时刷新。IP 改变后应手动刷新或重连。一个 IP 上其他网站的流量也可能命中相同的 VPN 路由。
+`domains` 路由列表支持精确域名和 IPv4，后缀 DNS 使用独立的 `dnsSuffixes` 列表；不支持通配符输入、AAAA/IPv6 路由或自动 TTL 定时刷新。IP 改变后应手动刷新或重连。一个 IP 上其他网站的流量也可能命中相同的 VPN 路由。
 
 ### Clash 或浏览器 DNS 的配合
 
@@ -147,3 +147,13 @@ Get-Content .\.local\domain-status.txt
 `tests/Test-Disconnect.ps1` 使用模拟对象验证项目进程筛选、PID 重用拒绝、重复停止和路由归属检查，不会停止真实进程或修改真实路由。`tests/Test-Domains.ps1` 验证 DNS 路由建立、多 IP 添加、刷新、失败保留、冲突保护和清理，只应在尚未配置的测试副本运行。
 
 上述检查已在 Windows PowerShell 5.1 和 PowerShell 7 环境中执行；它们不证明真实 HKU DNS 可达、管理员提示体验或强制断开后的实际网络恢复，这些仍需在自己的连接中验证。
+
+## 默认 HKU DNS 后缀与网段
+
+新安装使用 README 中列出的 4 个域名后缀、2 个校园 DNS 和 7 个 IPv4 网段。GUI 配置页的“DNS 后缀”可编辑根域列表（不填通配符）；命令行对应 `dnsSuffixes`。旧配置保持原值，需手动合并默认配置。
+
+连接后 NRPT 将根域及子域查询送至校园 DNS，VPN 网关使用默认 DNS 例外；断开时按会话标记清理。强制退出后应运行 `Disconnect.ps1` 恢复清理，网卡消失也能删除本会话规则。不要在未清理时删除 `.local/domain-session.json`。
+
+可用 `Get-DnsClientNrptPolicy -Effective` 检查实际策略，再用 `Resolve-DnsName moodle.hku.hk` 检查系统解析；不要仅凭 `nslookup` 或规则存在判断应用已使用该 DNS。浏览器 DoH、Clash Fake-IP 或域策略需单独适配。后缀 DNS 不会为外部 CDN 地址自动创建 VPN 路由；IPv6 隧道仍禁用。
+
+NRPT 匹配方式参考 [Microsoft NRPT 说明](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-R2-and-2012/dn593632%28v%3Dws.11%29)。

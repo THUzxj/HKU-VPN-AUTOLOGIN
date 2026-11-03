@@ -4,6 +4,7 @@ $work = Join-Path $root ('.local\gui-bridge-test-' + [Guid]::NewGuid().ToString(
 New-Item -ItemType Directory -Path (Join-Path $work '.local') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'lib') -Destination $work -Recurse
 $config = Get-Content (Join-Path $root 'examples\config.example.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$config.dnsSuffixes = @()
 $config.routes = @('192.0.2.10/32'); $config.domains = @('server.example.hk')
 $config | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $work '.local\config.json') -Encoding UTF8
 $specialStatus = "DNS's status: `"查询完成`"`r`nC:\mock\status"

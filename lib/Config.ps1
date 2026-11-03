@@ -26,7 +26,7 @@ function ConvertTo-HKURoute {
 function Test-HKUConfig {
     param($Config, [string]$ProjectRoot)
     $allowed = @{
-        root = @('schemaVersion','runtimePath','keepass','vpn','routes','domains','dnsServers')
+        root = @('schemaVersion','runtimePath','keepass','vpn','routes','domains','dnsServers','dnsSuffixes')
         keepass = @('cli','database','entry','credentialsEntry','keyFile','enabled')
         vpn = @('gateways','proxy','adapterName','mtu','tls12','userAgent','reconnectTimeoutMinutes')
     }
@@ -59,6 +59,7 @@ function Test-HKUConfig {
         if ($normalized -in @($Config.vpn.gateways | ForEach-Object { ([Uri]$_).Host })) { throw 'VPN gateway domains cannot be domain route targets.' }
     }
     foreach ($dns in $Config.dnsServers) { [void](ConvertTo-HKURoute ($dns + '/32')) }
+    foreach ($suffix in $Config.dnsSuffixes) { [void](ConvertTo-HKUDomain $suffix) }
     [void](Resolve-HKUPath $Config.runtimePath $ProjectRoot)
 }
 

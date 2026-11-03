@@ -1,6 +1,7 @@
-param([switch]$FromHook, [switch]$Cleanup)
+﻿param([switch]$FromHook, [switch]$Cleanup)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\Config.ps1')
+. (Join-Path $PSScriptRoot 'lib\DnsPolicy.ps1')
 $local = Join-Path $PSScriptRoot '.local'
 $statePath = Join-Path $local 'domain-session.json'
 $statusPath = Join-Path $local 'domain-status.txt'
@@ -28,7 +29,11 @@ function Add-VpnRoute {
         if ($transport -match '^\d{1,3}(\.\d{1,3}){3}$') {
             $octets=$transport.Split('.'); $mask=$parsed.mask.Split('.'); $network=@()
             for ($i=0;$i -lt 4;$i++) { $network += ([int]$octets[$i] -band [int]$mask[$i]) }
-            if (($network -join '.') -eq $parsed.address) { throw 'A target route conflicts with the VPN transport address.' }
+            if (($network -join '.') -eq $parsed.address) {
+                $bypass = @(Get-NetRoute -PolicyStore ActiveStore -DestinationPrefix ($transport + '/32') -ErrorAction SilentlyContinue |
+                    Where-Object { $_.InterfaceIndex -ne $state.index })
+                if ($parsed.prefix -eq 32 -or -not $bypass.Count) { throw 'A target route conflicts with the VPN transport address without a transport bypass route.' }
+            }
         }
     }
     $existing = @(Get-NetRoute -PolicyStore ActiveStore -DestinationPrefix $prefix -ErrorAction SilentlyContinue)
@@ -56,6 +61,7 @@ try {
     if (-not $lock) { throw 'Domain routes are busy. Retry after the current DNS query completes.' }
     if (Test-Path -LiteralPath $statePath) { $state = Get-Content -LiteralPath $statePath -Raw -Encoding UTF8 | ConvertFrom-Json }
     if ($Cleanup -or ($FromHook -and $env:reason -eq 'disconnect')) {
+        if ($state) { Remove-HKUDnsPolicy $state; if ($state.dnsPolicyOwner) { Clear-DnsClientCache -ErrorAction Stop } }
         if ($state -and (Test-DomainInterface)) { foreach ($owned in $state.owned) { Remove-OwnedRoute $owned } }
         if ($state) { Remove-Item -LiteralPath $statePath }
         Remove-Item -LiteralPath $cancelPath -ErrorAction SilentlyContinue
@@ -82,11 +88,13 @@ try {
         foreach ($route in $boot) { $state.owned = @($state.owned) + @([pscustomobject]@{prefix=$prefix;nextHop=$route.NextHop;metric=$route.RouteMetric}) }
     }
     Save-DomainState
+    if (@($config.dnsServers).Count) { $state.dns = @($config.dnsServers) }
     $names = @($config.domains | ForEach-Object { ConvertTo-HKUDomain $_ } | Sort-Object -Unique)
+    $suffixes = @($config.dnsSuffixes | ForEach-Object { ConvertTo-HKUDomain $_ } | Sort-Object -Unique)
     $fixed = @($config.routes | ForEach-Object { (ConvertTo-HKURoute $_).cidr } | Sort-Object -Unique)
     $desired = @($fixed)
     $answers = @()
-    if ($names.Count) {
+    if ($names.Count -or $suffixes.Count) {
         if (-not $state.dns.Count) { throw 'VPN did not supply IPv4 DNS servers. Configure dnsServers explicitly.' }
         foreach ($dns in $state.dns) { Add-DomainRoute $dns; $desired += $dns + '/32' }
         foreach ($name in $names) {
@@ -113,6 +121,11 @@ try {
     # Resolve all domains first; do not remove existing targets on lookup failure.
     foreach ($prefix in $fixed) { Add-VpnRoute $prefix }
     foreach ($address in @($answers.ip | Sort-Object -Unique)) { Add-DomainRoute $address }
+    if ($suffixes.Count -and -not $state.dnsPolicyOwner) {
+        $state | Add-Member -NotePropertyName dnsPolicyOwner -NotePropertyValue ('HKU-VPN-' + [Guid]::NewGuid().ToString('N')) -Force
+        Save-DomainState
+    }
+    Sync-HKUDnsPolicy $state $config
     # Remove only routes created by this session, after all lookups succeed.
     $retain = @()
     foreach ($owned in $state.owned) {
@@ -122,7 +135,7 @@ try {
     $state.resolved = $answers
     $state.static = @($fixed)
     Save-DomainState
-    $summary = @('VPN target routes refreshed. Global DNS unchanged.') + @($fixed | ForEach-Object { 'Fixed -> ' + $_ }) + @($answers | ForEach-Object { $_.domain + ' -> ' + $_.ip + ' (TTL ' + $_.ttl + ')' })
+    $summary = @('VPN target routes refreshed. Default DNS unchanged.') + @($suffixes | ForEach-Object { 'DNS suffix -> ' + $_ + ' -> ' + ($state.dns -join ', ') }) + @($fixed | ForEach-Object { 'Fixed -> ' + $_ }) + @($answers | ForEach-Object { $_.domain + ' -> ' + $_.ip + ' (TTL ' + $_.ttl + ')' })
     $summary | Set-Content -LiteralPath $statusPath -Encoding UTF8
     if (-not $FromHook) { $summary | Write-Output }
 } catch {

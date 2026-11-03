@@ -1,6 +1,6 @@
 # HKU VPN Auto Login（Windows）
 
-使用 OpenConnect 连接 HKU VPN，从 KeePassXC 加密数据库读取用户名、密码和 TOTP，并在微软 MFA 提示出现时自动提交验证码。通过指定 IPv4 地址、网段或完整域名解析出的 IP 实现分流，普通 Internet 与系统 DNS 保持现有出口。
+使用 OpenConnect 连接 HKU VPN，从 KeePassXC 加密数据库读取用户名、密码和 TOTP，并在微软 MFA 提示出现时自动提交验证码。默认将 HKU 的 7 个 IPv4 网段路由到 VPN，并将 4 个域名后缀的 DNS 查询交给校园 DNS。普通 Internet 与默认 DNS 保持现有配置。
 
 日常操作、双击断开、路由清理范围与故障处理见 [操作说明](docs/OPERATIONS.md)。
 
@@ -20,7 +20,21 @@ Avalonia GUI 已提供 Setup、连接与路由、配置、诊断四页，以及 
 
 官方手动安装入口：[PowerShell](https://learn.microsoft.com/powershell/scripting/install/install-powershell-on-windows)、[KeePassXC](https://keepassxc.org/download/)、[7-Zip](https://www.7-zip.org/)、[OpenConnect](https://gui.openconnect-vpn.net/download/)。没有 winget 时，先安装前三项，再运行 setup。
 
-## 快速开始
+## 打开 GUI
+
+Windows 运行包解压后，双击根目录的 `HKU-VPN.exe`。
+
+从 Git 仓库或源码 ZIP 开始时，先安装 .NET 10 SDK，在项目根目录打开 PowerShell 并运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Gui.ps1
+```
+
+构建成功会生成根目录的 `HKU-VPN.exe` 和 `.local/gui/`；双击 `HKU-VPN.exe` 打开界面，也可双击 `Gui.cmd`。两者都需要保留完整项目目录。首次在 Setup 页准备依赖，再到配置页填写 KeePassXC 数据库和条目；新配置已带 HKU 默认网段及 DNS 后缀。
+
+更新 GUI 源码后，先断开 VPN 并退出旧 GUI，再重新运行构建命令。运行测试不会生成这里的启动 EXE。仅预览可在构建后运行 `Gui.cmd --demo`。更多说明见 [GUI 使用与构建](docs/GUI.md)。
+
+## 命令行快速开始
 
 1. 下载项目并解压到自己的文件夹。
 2. 双击 `Setup.cmd`。脚本先准备依赖，再打开 KeePassXC，等待你创建数据库、完成下面的账户配置并填写参数。
@@ -81,11 +95,20 @@ setup 生成的配置位于 `.local/config.json`，仓库模板在 `examples/con
 | `vpn.userAgent` | 默认使用兼容 HKU XML 表单的 AnyConnect Windows 标识 |
 | `runtimePath` | OpenConnect 和 DLL 目录，默认项目内 `.local/runtime` |
 | `vpn.reconnectTimeoutMinutes` | 断网后等待原会话恢复的分钟数（1–1440）；模板为 60，旧配置缺省为 5；下次连接生效 |
-| `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；通常与 `domains` 合计至少填写一个目标 |
+| `routes` | 固定 IPv4/CIDR 列表，例如 `10.20.30.40/32` 或 `10.20.0.0/16`；默认包含下表的 7 个 HKU 网段 |
 | `domains` | 精确域名列表，经 VPN DNS 解析后添加 IPv4 路由，可省略 |
-| `dnsServers` | 用于域名查询的校园 IPv4 DNS；空列表使用 VPN 下发值 |
+| `dnsServers` | 校园 IPv4 DNS，默认 `147.8.235.73`、`147.8.235.74`；空列表使用 VPN 下发值 |
+| `dnsSuffixes` | 根域及子域的 DNS 后缀列表，通过 Windows NRPT 分流；可清空关闭 |
 
-模板中的 `192.0.2.10/32` 是文档示例地址，不能当成实际校园服务器使用。请填写自己要访问的服务器真实 IPv4 地址或完整域名；不要复制其他人的私人配置。IP 不写掩码时等同 `/32`，网段地址会规范化并去重。拒绝 `/0`、无任何目标的配置和明显无效的地址，避免无意接管整个 Internet。
+模板默认配置见下表，可根据需要增删。IP 不写掩码时等同 `/32`，网段地址会规范化并去重，拒绝 `/0` 和明显无效地址；空目标列表不会安装默认路由。
+
+| 默认项 | 值 |
+|---|---|
+| DNS 后缀 | `hku.hk`、`hku.edu.hk`、`hku.org.hk`、`hku.global`（根域及任意层级子域） |
+| 校园 DNS | `147.8.235.73`、`147.8.235.74` |
+| VPN IPv4 网段 | `147.8.0.0/16`、`175.159.158.0/23`、`175.159.160.0/19`、`175.159.212.0/22`、`202.45.128.0/24`、`202.189.96.0/20`、`202.189.112.0/20` |
+
+来源为 2026-11-03 HKU 校园网络整理文档。后三个关联域名按使用需求纳入 DNS 分流，不表示已确认其所有服务归属；不包含 `hkuvpn.com`、归属有争议的额外 `/28`、Wi-Fi 私网或 HARNET/CDN 网段。IPv6 隧道仍禁用，文档中的 IPv6 前缀不安装。
 
 需要批量配置时，复制模板到自己的文件后运行：
 
@@ -101,7 +124,7 @@ setup 可重复运行，不覆盖数据库，也不会把旧的明文 `credentia
 
 可选示例 `examples/clash-script.js` 会为默认的三个 HKU 网关添加 `HK APP` 香港节点组和域名规则。将它加入 Clash Verge 的脚本配置并在组内选定可用香港节点。自定义网关时同步调整对应的规则。
 
-此项目支持指定完整域名解析成 IPv4 路由，但**没有实现按 `.hk` 后缀匹配所有网站**。普通网站和未列出的校园 IP 继续走已有系统/Clash 规则；不会安装 VPN 默认路由或替换系统 DNS。
+`dnsSuffixes` 使用 Windows NRPT 分流 DNS，`routes` 按 IP 选择 VPN，两者分别生效：后缀域名若解析到外部 CDN 地址，该地址不会仅因 DNS 后缀而自动走 VPN，可按需加入 `domains`。不安装 VPN 默认路由，不替换网卡默认 DNS。
 
 ## 域名动态路由
 
@@ -113,9 +136,9 @@ setup 可重复运行，不覆盖数据库，也不会把旧的明文 `credentia
 "dnsServers": []
 ```
 
-`domains` 是精确域名列表，不接受 URL、通配符或 `.hk` 后缀规则。`dnsServers` 留空时使用 VPN 下发的 IPv4 DNS；也可指定校园 DNS 的 IPv4 地址。通常配置至少一个固定路由或域名；GUI 允许删除全部目标，此时不安装目标路由，不改变默认路由。旧配置不添加新字段仍可使用。
+`domains` 是精确域名列表，不接受 URL、通配符或 `.hk` 后缀规则。`dnsServers` 留空时使用 VPN 下发的 IPv4 DNS；也可指定校园 DNS 的 IPv4 地址。可以只配置 DNS 后缀；清空固定路由、精确域名和 DNS 后缀时，不安装任何目标或 DNS 路由。旧配置不添加新字段仍可使用，也不会自动合并模板默认值。已有配置请在 GUI 配置页或 `.local/config.json` 手动合并上表的 `routes`、`dnsSuffixes`、`dnsServers`。
 
-基础隧道就绪后，后台脚本为校园 DNS 添加 VPN `/32` 路由，再显式向它查询每个域名的 A 记录，把全部返回 IP 加入 VPN。本次生成的路由只保存到 ActiveStore，正常断开时清理；全局 DNS 不改变。DNS 的临时路由保留到断开，供后续刷新使用。
+基础隧道就绪后，后台脚本为校园 DNS 添加 VPN `/32` 路由，再显式向它查询每个域名的 A 记录，把全部返回 IP 加入 VPN。本次生成的路由只保存到 ActiveStore，正常断开时清理；默认 DNS 不改变。DNS 的临时路由保留到断开，供后续刷新使用。
 
 查看 `.local/domain-status.txt` 判断解析是否成功；`.local/domain-session.json` 记录本次接口、解析结果和脚本创建的路由，不记录认证数据。VPN 连上并不代表所有域名均解析成功，HKU DNS 的可达性仍需本机实测。
 
@@ -135,7 +158,7 @@ setup 可重复运行，不覆盖数据库，也不会把旧的明文 `credentia
 
 重复双击断开脚本可用于重试清理。脚本验证接口名、地址、索引，并核对路由前缀、下一跳和 metric；未找到可验证的会话记录时，不会猜测并删除网卡路由。强制结束进程后也可在管理员窗口运行 ` .\DomainRoutes.ps1 -Cleanup `，仅清理记录的 DNS/域名路由。清理不能恢复被其他工具独立修改的网络状态。
 
-**应用的 DNS 也必须配合**：仅让本脚本查询校园 DNS，不会改变浏览器/SSH 的解析结果。Clash 用户需让目标域名避开 Fake-IP、使用同一校园 DNS，并用精确域名 `DIRECT` 规则将目标交给系统路由；校园 DNS 本身也应避开代理转发。浏览器自带 DoH 同样可能返回不同地址。需要按自己的 Clash DNS 设置调整，脚本不自动写入 Clash、hosts 或全局 DNS。若不配置域名解析，可直接使用脚本解析出的真实 IP。
+**应用的 DNS 也必须配合**：`dnsSuffixes` 在连接后为 Windows DNS 客户端添加 NRPT 规则，并对 VPN 网关添加使用默认 DNS 的精确例外；断开或恢复清理时仅删除本会话创建的规则（即使网卡已消失）。`domains` 仍是精确域名解析路由列表。Clash 用户需让目标域名避开 Fake-IP、使用同一校园 DNS，并用精确域名 `DIRECT` 规则将目标交给系统路由；校园 DNS 本身也应避开代理转发。浏览器自带 DoH 同样可能返回不同地址。需要按自己的 Clash DNS 设置调整，脚本不自动写入 Clash、hosts 或网卡默认 DNS。已有同名 NRPT 规则会报冲突，不会覆盖；域策略可能使本地规则不生效，应使用 `Get-DnsClientNrptPolicy -Effective` 和实际应用解析核验。若不配置域名解析，可直接使用脚本解析出的真实 IP。
 
 共享 IP 上的其他网站也可能经过 VPN。这是 IP 路由的行为，不是严格的按域名隔离。VPN 网关自身不能加入域名目标列表，以免形成连接循环。
 
